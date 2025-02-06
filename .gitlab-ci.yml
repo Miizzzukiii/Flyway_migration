@@ -11,6 +11,8 @@ stages:
   - build
 
 build:
+  inherit:
+    default: false
   stage: build # Данный стейдж переписывает билд из основного пайплайна
   rules:
     - if: '$SKIP_BUILD == "true"'
