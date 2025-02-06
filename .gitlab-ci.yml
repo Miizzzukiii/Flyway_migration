@@ -1,0 +1,19 @@
+ 
+include:
+- project: 'devops/ci-cd/deploy'
+  ref: develop
+  file: '/ci/.gitlab-ci-java-migration-new.yml'
+
+variables:
+  NAMESPACE: 'devops-utils'
+  SKIP_BUILD == "true"
+
+stages:
+  - build_skip
+
+build_skip:
+  extends: .default_build
+  stage: build
+  only:
+    - variables:
+        - $SKIP_BUILD == "true"
