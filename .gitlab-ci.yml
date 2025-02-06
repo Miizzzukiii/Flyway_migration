@@ -1,19 +1,20 @@
- 
 include:
-- project: 'devops/ci-cd/deploy'
-  ref: develop
-  file: '/ci/.gitlab-ci-java-migration-new.yml'
+  - project: 'devops/ci-cd/deploy'
+    ref: develop
+    file: '/ci/.gitlab-ci-java-migration-new.yml'
 
 variables:
   NAMESPACE: 'devops-utils'
-  SKIP_BUILD == "true"
+  SKIP_BUILD: "true"  # Если "true", то мы хотим выполнить наш override
 
 stages:
-  - build_skip
+  - build
 
-build_skip:
-  extends: .default_build
+build:
   stage: build
-  only:
-    - variables:
-        - $SKIP_BUILD == "true"
+  rules:
+    - if: '$SKIP_BUILD == "true"'
+      when: always    # Если переменная установлена, выполняем наш job
+    - when: never     # Иначе job не выполняется
+  script:
+    - echo "Executing local build override because SKIP_BUILD is true"
