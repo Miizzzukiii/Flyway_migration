@@ -1,0 +1,65 @@
+-- Удаляем новую версию функции (из V004)
+DROP FUNCTION IF EXISTS public.serv_sel_order_for_project(p_proj_id integer, p_date_from date);
+
+-- Удаляем изменение (из V003), которое удаляло старую функцию
+DROP FUNCTION IF EXISTS public.serv_sel_ordphzerno_for_srv_and_sts_1_day(p_serv_id bigint, p_sts_id bigint, p_create_date_depth integer, p_date_from date);
+
+-- Восстанавливаем состояние, которое было в V002
+CREATE OR REPLACE FUNCTION public.serv_sel_ordphzerno_for_srv_and_sts_1_day(p_serv_id bigint, p_sts_id bigint, p_create_date_depth integer, p_date_from date DEFAULT (CURRENT_DATE - 1))
+ RETURNS TABLE(ord_uuid uuid, ord_number character varying, ord_create_date timestamp without time zone, ord_date_from timestamp without time zone, ord_fill_time interval, 
+   sts_id bigint, sts_name character varying, serv_uuid uuid, serv_id bigint, serv_name text, org_uuid uuid, org_name text, org_ogrn character varying, org_inn character varying, 
+    org_in_msp boolean, lot_uid uuid, lot_number varchar, lot_purpose varchar, lot_status varchar, sdiz_number varchar, lot_date_registration timestamp, sdiz_status varchar)
+ LANGUAGE plpgsql
+AS $function$
+BEGIN
+ RETURN QUERY
+    WITH
+    get_order AS (
+      SELECT ROW_NUMBER() OVER (PARTITION BY ord.uuid ORDER BY ord.date_from ASC) AS v_rn,
+         ord.uuid        AS v_ord_uuid,
+         ord.order_number      AS v_ord_number,
+         ord.create_date AT TIME ZONE 'MSK'  AS v_ord_create_date,
+         ord.date_from AT TIME ZONE 'MSK'  AS v_ord_date_from,
+         ord.date_from - ord.create_date  AS v_ord_fill_time,
+         sts.id        AS v_sts_id,
+         sts.name        AS v_sts_name,
+         serv.uuid        AS v_serv_uuid,
+         serv.id        AS v_serv_id,
+         serv.name        AS v_serv_name,
+         org.uuid        AS v_org_uuid,
+         org.caption        AS v_org_name,
+         org.ogrn        AS v_org_ogrn,
+         org.inn        AS v_org_inn,
+         org.in_msp_registry     AS v_org_in_msp
+     FROM r_order_full ord
+     INNER JOIN t_service_full serv_full
+       ON ord.service_id = serv_full.id
+     INNER JOIN t_service serv
+       ON serv_full.uuid = serv.uuid
+     INNER JOIN t_unified_status_model_full sts_full
+       ON ord.status_code = sts_full.id
+     INNER JOIN t_unified_status_model sts
+       ON sts_full.uuid = sts.uuid
+     LEFT JOIN t_org_full org
+         ON ord.applicant_org_id = org.id
+     WHERE serv.id = p_serv_id
+       AND sts.id = p_sts_id
+       AND (ord.create_date AT TIME ZONE 'MSK')::date >= p_date_from - 10
+    )  
+   SELECT v_ord_uuid, v_ord_number, v_ord_create_date, v_ord_date_from, v_ord_fill_time, v_sts_id, v_sts_name,
+       v_serv_uuid, v_serv_id, v_serv_name, v_org_uuid, v_org_name, v_org_ogrn, v_org_inn, v_org_in_msp,
+       cl.uuid                      as v_lot_uid,
+       cl.lot_number                as v_lot_numder,
+       cl.lot_purpose               as v_lot_purpose,
+       cl.lot_status                as v_lot_status,
+       cl.sdiz_number               as v_sdiz_number,
+       cl.lot_date_registration AT TIME ZONE 'MSK'    as v_lot_date_registration,
+       cl.sdiz_status       as v_sdiz_status
+   FROM get_order go
+     JOIN r_order o ON o.uuid = go.v_ord_uuid
+     JOIN r_phyto_cert_request rf ON rf.order_id = o.id
+     LEFT JOIN r_phyto_cert_request_cargo_lots cl ON cl.phyto_cert_request_id = rf.id
+   WHERE v_rn = 1
+     AND v_ord_date_from::date = p_date_from;
+END;
+$function$;
